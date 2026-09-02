@@ -12,6 +12,8 @@
   <canvas id="game" width="960" height="540"></canvas>
   <div id="stall-warning">⚠ STALL WARNING ⚠</div>
   <div id="event-banner" class="wow-panel">CARRIER REINFORCEMENTS APPROACHING FROM BOTH OCEANS!</div>
+  <div id="crt-overlay" aria-hidden="true"></div>
+  <button id="crt-toggle" class="hud-btn" type="button" title="Toggle CRT display">CRT: OFF</button>
   
   <div id="ui">
     <div class="wow-panel unit-frame">
@@ -37,11 +39,20 @@
   <div id="start-overlay" class="overlay">
     <div class="wow-panel overlay-card">
       <h1>PIXEL SKY WARS</h1>
+      <section class="hangar" aria-label="Aircraft hangar">
+        <div class="section-heading"><span>HANGAR / AIRCRAFT</span><span>HONOR <strong id="hangar-honor">0</strong></span></div>
+        <div id="aircraft-options" class="aircraft-options"></div>
+      </section>
+      <section class="achievements" aria-label="Pilot achievements">
+        <div class="section-heading">PILOT ACHIEVEMENTS</div>
+        <div id="achievement-list" class="achievement-list"></div>
+      </section>
       <p>
         <strong>MOUSE CURSOR</strong> - Aim & Vector Flight<br>
         <strong>W KEY</strong> - Fire Heavy Cannons<br>
         <strong>SHIFT KEY</strong> - Afterburner Boost<br>
-        <strong>S KEY</strong> - Flaps Airbrake & Tight Turn<br><br>
+        <strong>S KEY</strong> - Flaps Airbrake & Tight Turn<br>
+        <strong>CRT BUTTON</strong> - Toggle retro display filter<br><br>
         <em><strong>Dogfight Tactical Edition:</strong> Engine flight audio, upright sprite mechanics, AI evasion & stalling physics, heavy aircraft armor, and lead-target dogfighting!</em>
       </p>
       <button class="start-btn" onclick="startGame()">ENTER BATTLE</button>

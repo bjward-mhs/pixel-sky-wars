@@ -10,12 +10,113 @@ const progressBarInner = document.getElementById('progress-bar-inner');
 const progressLabel = document.getElementById('progress-label');
 const stallWarning = document.getElementById('stall-warning');
 const eventBanner = document.getElementById('event-banner');
+const crtOverlay = document.getElementById('crt-overlay');
+const crtToggle = document.getElementById('crt-toggle');
+const hangarHonor = document.getElementById('hangar-honor');
+const aircraftOptions = document.getElementById('aircraft-options');
+const achievementList = document.getElementById('achievement-list');
 
 // Audio Synthesizer Engine
 let audioCtx = null;
 let engineOsc = null;
 let engineFilter = null;
 let engineGain = null;
+let honorBank = Number(localStorage.getItem('pixelSkyWarsHonor') || 0);
+let selectedAircraft = localStorage.getItem('pixelSkyWarsAircraft') || 'scout';
+let crtEnabled = localStorage.getItem('pixelSkyWarsCRT') === 'true';
+const unlockedAircraft = JSON.parse(localStorage.getItem('pixelSkyWarsUnlocks') || '["scout"]');
+const achievements = {
+  ace: { label: 'ACE', detail: '5 kills / 30 sec', earned: false },
+  touchAndGo: { label: 'TOUCH & GO', detail: 'Carrier deck landing', earned: false },
+  closeCall: { label: 'CLOSE CALL', detail: 'Survive under 5% hull', earned: false }
+};
+const savedAchievements = JSON.parse(localStorage.getItem('pixelSkyWarsAchievements') || '{}');
+Object.keys(achievements).forEach(id => { achievements[id].earned = savedAchievements[id] === true; });
+let recentKills = [];
+let smokeTrails = [];
+let muzzleFlashes = [];
+let radioCooldown = 0;
+
+const AIRCRAFT = {
+  scout: { name: 'SCOUT', cost: 0, speed: 6, hp: 300, turn: 0.038, description: 'Balanced flight' },
+  interceptor: { name: 'INTERCEPTOR', cost: 500, speed: 8.7, hp: 220, turn: 0.055, description: 'Nimble / high speed' },
+  bomber: { name: 'BOMBER', cost: 900, speed: 4.8, hp: 520, turn: 0.024, description: 'Heavy / high health' }
+};
+
+function renderHangar() {
+  hangarHonor.textContent = honorBank;
+  aircraftOptions.innerHTML = Object.entries(AIRCRAFT).map(([id, craft]) => {
+    const unlocked = unlockedAircraft.includes(id);
+    return `<button class="aircraft-card ${selectedAircraft === id ? 'selected' : ''} ${unlocked ? '' : 'locked'}" data-aircraft="${id}"><strong>${craft.name}</strong><small>${unlocked ? craft.description : `UNLOCK ${craft.cost} HONOR`}</small></button>`;
+  }).join('');
+  achievementList.innerHTML = Object.values(achievements).map(badge => `<span class="badge ${badge.earned ? 'earned' : ''}">${badge.earned ? '★ ' : ''}${badge.label}<br><small>${badge.detail}</small></span>`).join('');
+  aircraftOptions.querySelectorAll('[data-aircraft]').forEach(button => button.addEventListener('click', () => {
+    const aircraftId = button.dataset.aircraft;
+    if (!unlockedAircraft.includes(aircraftId)) {
+      const craft = AIRCRAFT[aircraftId];
+      if (honorBank < craft.cost) return;
+      honorBank -= craft.cost;
+      unlockedAircraft.push(aircraftId);
+      localStorage.setItem('pixelSkyWarsHonor', honorBank);
+      localStorage.setItem('pixelSkyWarsUnlocks', JSON.stringify(unlockedAircraft));
+    }
+    selectedAircraft = aircraftId;
+    localStorage.setItem('pixelSkyWarsAircraft', selectedAircraft);
+    renderHangar();
+  }));
+}
+
+function awardAchievement(id) {
+  if (achievements[id].earned) return;
+  achievements[id].earned = true;
+  localStorage.setItem('pixelSkyWarsAchievements', JSON.stringify(Object.fromEntries(Object.entries(achievements).map(([key, badge]) => [key, badge.earned]))));
+  renderHangar();
+  eventBanner.textContent = `BADGE EARNED: ${achievements[id].label}`;
+  eventBanner.style.display = 'block';
+  setTimeout(() => { eventBanner.style.display = 'none'; }, 2500);
+}
+
+function playRadioChatter() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(180 + Math.random() * 80, now);
+  osc.frequency.setValueAtTime(520 + Math.random() * 160, now + 0.055);
+  osc.frequency.setValueAtTime(260, now + 0.11);
+  filter.type = 'lowpass'; filter.frequency.value = 1200;
+  gain.gain.setValueAtTime(0.0001, now); gain.gain.linearRampToValueAtTime(0.07, now + 0.012); gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+  osc.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.17);
+}
+
+function spawnEngineSmoke(plane) {
+  if (smokeTrails.length > 80) smokeTrails.shift();
+  smokeTrails.push({
+    x: plane.x - Math.cos(plane.angle) * 18 + (Math.random() - 0.5) * 8,
+    y: plane.y - Math.sin(plane.angle) * 18 + (Math.random() - 0.5) * 8,
+    size: 3 + Math.random() * 5, life: 42
+  });
+}
+
+function spawnMuzzleFlash(plane) {
+  muzzleFlashes.push({ x: plane.x + Math.cos(plane.angle) * 24, y: plane.y + Math.sin(plane.angle) * 24, angle: plane.angle, life: 4 });
+}
+
+function fireCannon(plane) {
+  bullets.push(new Bullet(plane.x, plane.y, plane.angle, plane));
+  spawnMuzzleFlash(plane);
+}
+
+crtToggle.classList.toggle('active', crtEnabled);
+crtOverlay.classList.toggle('active', crtEnabled);
+crtToggle.textContent = `CRT: ${crtEnabled ? 'ON' : 'OFF'}`;
+crtToggle.addEventListener('click', () => {
+  crtEnabled = !crtEnabled; localStorage.setItem('pixelSkyWarsCRT', crtEnabled);
+  crtOverlay.classList.toggle('active', crtEnabled); crtToggle.textContent = `CRT: ${crtEnabled ? 'ON' : 'OFF'}`;
+});
+renderHangar();
 
 function initAudio() {
   if (!audioCtx) {
@@ -341,11 +442,14 @@ class Plane {
     this.vx = 0;
     this.vy = 0;
     this.angle = 0;
-    this.speed = 6.0;
+    this.aircraftId = isPlayer ? selectedAircraft : 'scout';
+    this.aircraft = AIRCRAFT[this.aircraftId];
+    this.spriteScale = this.aircraftId === 'bomber' ? 4 : (this.aircraftId === 'interceptor' ? 2 : SPRITE_SIZE);
+    this.speed = this.aircraft.speed;
     this.isPlayer = isPlayer;
     this.isFriendly = isFriendly;
-    this.maxHp = 300;
-    this.hp = 300;
+    this.maxHp = this.aircraft.hp;
+    this.hp = this.maxHp;
     this.gunTimer = 0;
     this.isStalled = false;
     this.isDying = false;
@@ -412,7 +516,7 @@ class Plane {
 
       const pitchUp = -Math.sin(this.angle);
       let altitudeDrag = Math.max(0, (500 - this.y) * 0.00012);
-      let turnSpeed = 0.038;
+      let turnSpeed = this.aircraft.turn;
 
       if (keys['shift']) {
         this.speed = Math.min(11.5, this.speed + 0.18 - altitudeDrag);
@@ -430,10 +534,10 @@ class Plane {
         if (pitchUp > 0.45) {
           this.speed = Math.max(1.2, this.speed - (0.08 + altitudeDrag) * pitchUp);
         } else if (pitchUp < -0.3) {
-          this.speed = Math.min(8.8, this.speed + 0.07 * Math.abs(pitchUp));
+          this.speed = Math.min(this.aircraft.speed * 1.45, this.speed + 0.07 * Math.abs(pitchUp));
         } else {
-          if (this.speed < 6.0) this.speed += 0.04;
-          if (this.speed > 6.0) this.speed -= 0.04;
+          if (this.speed < this.aircraft.speed) this.speed += 0.04;
+          if (this.speed > this.aircraft.speed) this.speed -= 0.04;
         }
       }
 
@@ -480,18 +584,11 @@ class Plane {
       this.x += this.vx;
       this.y += this.vy;
 
-      if (this.hp / this.maxHp <= 0.35 && Math.random() < 0.7) {
-        particles.push(new PixelParticle(
-          this.x - Math.cos(this.angle) * 18,
-          this.y - Math.sin(this.angle) * 18,
-          Math.random() < 0.4 ? '#ef4444' : '#334155',
-          Math.random() * 4 + 3
-        ));
-      }
+      if (this.hp / this.maxHp <= 0.35 && Math.random() < 0.7) spawnEngineSmoke(this);
 
       if (this.gunTimer > 0) this.gunTimer--;
       if (keys['w'] && this.gunTimer <= 0) {
-        bullets.push(new Bullet(this.x, this.y, this.angle));
+        fireCannon(this);
         this.gunTimer = 6;
         screenShake = Math.max(screenShake, 3.5);
         playSound('shoot');
@@ -572,7 +669,7 @@ class Plane {
 
           if (this.gunTimer > 0) this.gunTimer--;
           if (minDist < 520 && minDist > 100 && Math.abs(diff) < 0.22 && this.gunTimer <= 0) {
-            bullets.push(new Bullet(this.x, this.y, this.angle));
+            fireCannon(this);
             this.gunTimer = 16;
           }
         }
@@ -607,12 +704,12 @@ class Plane {
   }
 
   draw() {
-    drawPixelMatrix(PIXEL_PLANE, this.x, this.y, SPRITE_SIZE, this.angle, this.palette);
+    drawPixelMatrix(PIXEL_PLANE, this.x, this.y, this.spriteScale, this.angle, this.palette);
   }
 }
 
 class Bullet {
-  constructor(x, y, angle) {
+  constructor(x, y, angle, owner = null) {
     this.x = x + Math.cos(angle) * 22;
     this.y = y + Math.sin(angle) * 22;
     const bulletSpeed = 18;
@@ -621,6 +718,7 @@ class Bullet {
     this.gravity = 0.18;
     this.life = 70;
     this.ricochetsLeft = 2;
+    this.owner = owner;
   }
 
   update() {
@@ -711,6 +809,7 @@ function switchSquadMember() {
     player = newLeader;
     
     playSound('transfer');
+    playRadioChatter();
     eventBanner.textContent = "SQUAD TRANSFER! TAKING CONTROL OF WINGMAN!";
     eventBanner.style.display = "block";
     setTimeout(() => { eventBanner.style.display = "none"; }, 3000);
@@ -719,9 +818,18 @@ function switchSquadMember() {
   }
 }
 
-function registerTargetEliminated(scoreValue) {
+function registerTargetEliminated(scoreValue, isAirKill = false) {
   score += scoreValue;
+  honorBank += scoreValue;
+  localStorage.setItem('pixelSkyWarsHonor', honorBank);
+  renderHangar();
   totalTargetsEliminated++;
+
+  if (isAirKill) {
+    recentKills.push(gameTime);
+    recentKills = recentKills.filter(killTime => gameTime - killTime <= 1800);
+    if (recentKills.length >= 5) awardAchievement('ace');
+  }
 
   const progressRatio = Math.min(1.0, totalTargetsEliminated / WIN_KILL_TARGET);
   progressBarInner.style.width = `${progressRatio * 100}%`;
@@ -733,7 +841,8 @@ function registerTargetEliminated(scoreValue) {
 function startGame() {
   initAudio();
   score = 0; gameTime = 0; craters = []; totalTargetsEliminated = 0;
-  bullets = []; particles = []; clouds = []; friendlies = []; enemies = []; people = []; groundTargets = [];
+  bullets = []; particles = []; smokeTrails = []; muzzleFlashes = []; clouds = []; friendlies = []; enemies = []; people = []; groundTargets = [];
+  recentKills = []; radioCooldown = 0;
   halfTimeTriggered = false; currentWeather = 'CLEAR';
 
   progressBarInner.style.width = '0%';
@@ -802,8 +911,16 @@ function update() {
 
   gameTime++;
   if (screenShake > 0) screenShake *= 0.88;
+  if (radioCooldown > 0) radioCooldown--;
 
   player.update();
+  if (player.hp > 0 && player.hp / player.maxHp <= 0.05) awardAchievement('closeCall');
+  const carrierLanding = (Math.abs(player.x - CARRIER_WEST_X) < 250 || Math.abs(player.x - CARRIER_EAST_X) < 250) && player.y > BASE_GROUND_Y - 180 && player.vy > 0;
+  if (carrierLanding) awardAchievement('touchAndGo');
+  if (radioCooldown === 0 && enemies.some(enemy => !enemy.isDying && Math.hypot(enemy.x - player.x, enemy.y - player.y) < 500)) {
+    playRadioChatter();
+    radioCooldown = 240;
+  }
   stallWarning.style.display = (player.isStalled && !player.isDying) ? 'block' : 'none';
 
   camX = player.x - canvas.width / 2;
@@ -852,7 +969,7 @@ function update() {
     e.update();
     if (e.dead) {
       enemies.splice(i, 1);
-      registerTargetEliminated(200);
+      registerTargetEliminated(200, true);
       if (gameState !== 'PLAYING') return;
     }
   }
@@ -954,6 +1071,16 @@ function update() {
   for (let i = particles.length - 1; i >= 0; i--) {
     particles[i].update();
     if (particles[i].life <= 0) particles.splice(i, 1);
+  }
+
+  for (let i = smokeTrails.length - 1; i >= 0; i--) {
+    smokeTrails[i].life--;
+    smokeTrails[i].size += 0.08;
+    if (smokeTrails[i].life <= 0) smokeTrails.splice(i, 1);
+  }
+  for (let i = muzzleFlashes.length - 1; i >= 0; i--) {
+    muzzleFlashes[i].life--;
+    if (muzzleFlashes[i].life <= 0) muzzleFlashes.splice(i, 1);
   }
 
   if (currentWeather === 'STORM') {
@@ -1153,8 +1280,22 @@ function render() {
   if (gameState !== 'START') {
     groundTargets.forEach(gt => gt.draw());
     people.forEach(p => p.draw());
+    smokeTrails.forEach(smoke => {
+      ctx.fillStyle = `rgba(30, 41, 59, ${smoke.life / 70})`;
+      ctx.fillRect(Math.floor(smoke.x), Math.floor(smoke.y), smoke.size, smoke.size);
+    });
     particles.forEach(p => p.draw());
     bullets.forEach(b => b.draw());
+    muzzleFlashes.forEach(flash => {
+      ctx.save();
+      ctx.translate(Math.floor(flash.x), Math.floor(flash.y));
+      ctx.rotate(flash.angle);
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(0, -3, 22, 6);
+      ctx.fillStyle = '#f97316';
+      ctx.fillRect(7, -5, 13, 10);
+      ctx.restore();
+    });
     friendlies.forEach(f => f.draw());
     enemies.forEach(e => e.draw());
     if (player) player.draw();

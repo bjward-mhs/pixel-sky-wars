@@ -10,8 +10,10 @@ const progressBarInner = document.getElementById('progress-bar-inner');
 const progressLabel = document.getElementById('progress-label');
 const stallWarning = document.getElementById('stall-warning');
 const eventBanner = document.getElementById('event-banner');
+const battleBrief = document.getElementById('battle-brief');
 const crtOverlay = document.getElementById('crt-overlay');
 const crtToggle = document.getElementById('crt-toggle');
+const hangarToggle = document.getElementById('hangar-toggle');
 const hangarHonor = document.getElementById('hangar-honor');
 const aircraftOptions = document.getElementById('aircraft-options');
 const achievementList = document.getElementById('achievement-list');
@@ -36,6 +38,23 @@ let recentKills = [];
 let smokeTrails = [];
 let muzzleFlashes = [];
 let radioCooldown = 0;
+let campaignIndex = Number(localStorage.getItem('pixelSkyWarsCampaign') || 0);
+let currentTerrain = 'HYBRID';
+
+const CAMPAIGN = [
+  { name: 'Battle of Ember Coast', terrain: 'HYBRID', weather: 'CLEAR', kills: 20, enemies: 4, brief: 'Break the coastal air screen.' },
+  { name: 'Battle of Dust Meridian', terrain: 'DESERT', weather: 'CLEAR', kills: 22, enemies: 5, brief: 'Cross the dry basin under open skies.' },
+  { name: 'Battle of Iron Rain', terrain: 'LAND', weather: 'RAIN', kills: 24, enemies: 6, brief: 'Hold the mainland through a downpour.' },
+  { name: 'Battle of Cloud Citadel', terrain: 'HYBRID', weather: 'CLOUDY', kills: 26, enemies: 6, brief: 'Find the enemy fleet above the cloud shelf.' },
+  { name: 'Battle of Moonlit Straits', terrain: 'HYBRID', weather: 'NIGHT', kills: 28, enemies: 7, brief: 'Finish the campaign in the dark.' }
+];
+
+function getCurrentBattle() { return CAMPAIGN[Math.min(campaignIndex, CAMPAIGN.length - 1)]; }
+function renderBattleBrief() {
+  const battle = getCurrentBattle();
+  battleBrief.textContent = `${battle.name} / ${battle.terrain} / ${battle.weather} / ${battle.brief}`;
+}
+renderBattleBrief();
 
 const AIRCRAFT = {
   scout: { name: 'SCOUT', cost: 0, speed: 6, hp: 300, turn: 0.038, description: 'Balanced flight' },
@@ -115,6 +134,12 @@ crtToggle.textContent = `CRT: ${crtEnabled ? 'ON' : 'OFF'}`;
 crtToggle.addEventListener('click', () => {
   crtEnabled = !crtEnabled; localStorage.setItem('pixelSkyWarsCRT', crtEnabled);
   crtOverlay.classList.toggle('active', crtEnabled); crtToggle.textContent = `CRT: ${crtEnabled ? 'ON' : 'OFF'}`;
+});
+hangarToggle.addEventListener('click', () => {
+  if (gameState !== 'PLAYING') return;
+  gameState = 'HANGAR';
+  document.querySelector('.start-btn').textContent = 'RESUME SORTIE';
+  startOverlay.style.display = 'flex';
 });
 renderHangar();
 
@@ -217,7 +242,7 @@ let camX = 0, camY = 0;
 let gameTime = 0;
 let screenShake = 0;
 let totalTargetsEliminated = 0;
-const WIN_KILL_TARGET = 20;
+let winKillTarget = 20;
 let halfTimeTriggered = false;
 
 let currentWeather = 'CLEAR';
@@ -234,17 +259,17 @@ canvas.addEventListener('mousemove', (e) => {
   mouseY = (e.clientY - rect.top) * scaleY;
 });
 
-const MAP_MIN_X = -2400;
-const MAP_MAX_X = 4400;
-const LEFT_OCEAN_END = -800;
-const LEFT_BEACH_END = -300;
-const RIGHT_BEACH_START = 2100;
-const RIGHT_OCEAN_START = 2600;
+const MAP_MIN_X = -3000;
+const MAP_MAX_X = 5000;
+const LEFT_OCEAN_END = -1100;
+const LEFT_BEACH_END = -450;
+const RIGHT_BEACH_START = 2550;
+const RIGHT_OCEAN_START = 3100;
 
 const WORLD_HEIGHT = 1800;
 const BASE_GROUND_Y = 1600;
-const CARRIER_WEST_X = -1800;
-const CARRIER_EAST_X = 3500;
+const CARRIER_WEST_X = -2200;
+const CARRIER_EAST_X = 4100;
 
 let craters = [];
 
@@ -297,6 +322,27 @@ const PIXEL_CLOUD = [
   "1111111111111111",
   "1111111111111111",
   ".11111111111111."
+];
+const PIXEL_CLOUD_WISP = [
+  ".....1111........",
+  "..1111111111.....",
+  ".1111111111111...",
+  "111111111111111..",
+  "..111111111111..."
+];
+const PIXEL_CLOUD_TOWER = [
+  "......1111.......",
+  "...111111111.....",
+  ".1111111111111...",
+  "1111111111111111.",
+  "1111111111111111.",
+  "...1111111111...."
+];
+const PIXEL_CLOUD_STREAK = [
+  "1111111111111111.",
+  ".111111111111111.",
+  "...1111111111111.",
+  ".....11111111111."
 ];
 
 const PIXEL_TREE = [
@@ -453,6 +499,9 @@ class Plane {
     this.gunTimer = 0;
     this.isStalled = false;
     this.isDying = false;
+    this.landingCooldown = 0;
+    this.isRetreating = false;
+    this.kills = 0;
 
     this.updatePalette();
   }
@@ -468,6 +517,13 @@ class Plane {
   }
 
   update() {
+    if (this.landingCooldown > 0) {
+      this.landingCooldown--;
+      this.vx = 0;
+      this.vy = 0;
+      if (keys['w'] || keys['shift']) this.landingCooldown = 0;
+      return;
+    }
     if (this.isDying) {
       this.angle += 0.08;
       this.vy += 0.22;
@@ -584,6 +640,18 @@ class Plane {
       this.x += this.vx;
       this.y += this.vy;
 
+      const overCarrier = (Math.abs(this.x - CARRIER_WEST_X) < 270 || Math.abs(this.x - CARRIER_EAST_X) < 270) && this.y > BASE_GROUND_Y - 180 && this.y < BASE_GROUND_Y - 20 && this.vy > 0;
+      if (overCarrier && this.speed < 4.5) {
+        this.y = BASE_GROUND_Y - 120;
+        this.speed = 0;
+        this.hp = Math.min(this.maxHp, this.hp + 120);
+        this.landingCooldown = 45;
+        awardAchievement('touchAndGo');
+        eventBanner.textContent = 'CARRIER DECK LANDING: HULL REPAIRED';
+        eventBanner.style.display = 'block';
+        setTimeout(() => { eventBanner.style.display = 'none'; }, 2200);
+      }
+
       if (this.hp / this.maxHp <= 0.35 && Math.random() < 0.7) spawnEngineSmoke(this);
 
       if (this.gunTimer > 0) this.gunTimer--;
@@ -595,10 +663,14 @@ class Plane {
       }
 
     } else {
+      if (this.hp / this.maxHp <= 0.3) this.isRetreating = true;
       let target = null;
       let minDist = Infinity;
 
-      if (this.isFriendly) {
+      if (this.isRetreating) {
+        target = { x: this.isFriendly ? CARRIER_WEST_X : CARRIER_EAST_X, y: BASE_GROUND_Y - 160, vx: 0, vy: 0 };
+        minDist = Math.hypot(target.x - this.x, target.y - this.y);
+      } else if (this.isFriendly) {
         enemies.forEach(e => {
           if (!e.isDying) {
             let d = Math.hypot(e.x - this.x, e.y - this.y);
@@ -668,7 +740,7 @@ class Plane {
           else if (diff < -0.038) this.angle -= 0.038;
 
           if (this.gunTimer > 0) this.gunTimer--;
-          if (minDist < 520 && minDist > 100 && Math.abs(diff) < 0.22 && this.gunTimer <= 0) {
+          if (!this.isRetreating && minDist < 520 && minDist > 100 && Math.abs(diff) < 0.22 && this.gunTimer <= 0) {
             fireCannon(this);
             this.gunTimer = 16;
           }
@@ -684,6 +756,10 @@ class Plane {
       this.vy = Math.sin(this.angle) * this.speed;
       this.x += this.vx;
       this.y += this.vy;
+      if (this.isRetreating && Math.hypot(this.x - (this.isFriendly ? CARRIER_WEST_X : CARRIER_EAST_X), this.y - (BASE_GROUND_Y - 160)) < 120) {
+        this.hp = Math.max(this.hp, this.maxHp * 0.7);
+        this.isRetreating = false;
+      }
     }
 
     if (this.x < MAP_MIN_X + 100) {
@@ -705,6 +781,28 @@ class Plane {
 
   draw() {
     drawPixelMatrix(PIXEL_PLANE, this.x, this.y, this.spriteScale, this.angle, this.palette);
+    const visibleKills = Math.min(this.kills, 20);
+    if (visibleKills > 0) {
+      ctx.save();
+      ctx.translate(Math.floor(this.x), Math.floor(this.y));
+      ctx.rotate(this.angle);
+      ctx.strokeStyle = '#fef08a';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < visibleKills; i++) {
+        const group = Math.floor(i / 5);
+        const mark = i % 5;
+        const markX = -30 + group * 18 + mark * 3;
+        ctx.beginPath();
+        ctx.moveTo(markX, -25);
+        ctx.lineTo(markX, -17);
+        if (mark === 4) {
+          ctx.moveTo(markX - 2, -26);
+          ctx.lineTo(markX + 2, -16);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 }
 
@@ -780,6 +878,8 @@ class ParallaxCloud {
     this.y = Math.random() * 800 + 40;
     this.scale = layer === 1 ? Math.floor(Math.random() * 2) + 3 : Math.floor(Math.random() * 3) + 5;
     this.opacity = layer === 1 ? 0.45 : 0.75;
+    this.variant = [PIXEL_CLOUD, PIXEL_CLOUD_WISP, PIXEL_CLOUD_TOWER, PIXEL_CLOUD_STREAK][Math.floor(Math.random() * 4)];
+    if (currentWeather === 'CLOUDY') this.opacity = Math.min(0.9, this.opacity + 0.15);
     this.palette = { '1': `rgba(255, 255, 255, ${this.opacity})` };
   }
 
@@ -787,7 +887,7 @@ class ParallaxCloud {
     const factor = this.layer === 1 ? 0.3 : 0.6;
     const renderX = this.x + camX * (1 - factor);
     const renderY = this.y + camY * (1 - factor);
-    drawPixelMatrix(PIXEL_CLOUD, renderX, renderY, this.scale, 0, this.palette);
+    drawPixelMatrix(this.variant, renderX, renderY, this.scale, 0, this.palette);
   }
 }
 
@@ -831,22 +931,37 @@ function registerTargetEliminated(scoreValue, isAirKill = false) {
     if (recentKills.length >= 5) awardAchievement('ace');
   }
 
-  const progressRatio = Math.min(1.0, totalTargetsEliminated / WIN_KILL_TARGET);
+  const progressRatio = Math.min(1.0, totalTargetsEliminated / winKillTarget);
   progressBarInner.style.width = `${progressRatio * 100}%`;
-  progressLabel.textContent = `MISSION PROGRESS: ${Math.floor(progressRatio * 100)}% (${totalTargetsEliminated}/${WIN_KILL_TARGET} TARGETS)`;
+  progressLabel.textContent = `MISSION PROGRESS: ${Math.floor(progressRatio * 100)}% (${totalTargetsEliminated}/${winKillTarget} TARGETS)`;
 
-  if (totalTargetsEliminated >= WIN_KILL_TARGET) victory();
+  if (totalTargetsEliminated >= winKillTarget) victory();
 }
 
 function startGame() {
+  if (gameState === 'HANGAR') {
+    startOverlay.style.display = 'none';
+    gameState = 'PLAYING';
+    document.querySelector('.start-btn').textContent = 'ENTER BATTLE';
+    return;
+  }
+  if (gameState === 'VICTORY') {
+    campaignIndex = (campaignIndex + 1) % CAMPAIGN.length;
+    localStorage.setItem('pixelSkyWarsCampaign', campaignIndex);
+  }
   initAudio();
+  const battle = getCurrentBattle();
+  winKillTarget = battle.kills;
+  currentTerrain = battle.terrain;
+  currentWeather = battle.weather;
+  renderBattleBrief();
   score = 0; gameTime = 0; craters = []; totalTargetsEliminated = 0;
   bullets = []; particles = []; smokeTrails = []; muzzleFlashes = []; clouds = []; friendlies = []; enemies = []; people = []; groundTargets = [];
   recentKills = []; radioCooldown = 0;
-  halfTimeTriggered = false; currentWeather = 'CLEAR';
+  halfTimeTriggered = false;
 
   progressBarInner.style.width = '0%';
-  progressLabel.textContent = `MISSION PROGRESS: 0% (0/${WIN_KILL_TARGET} TARGETS)`;
+  progressLabel.textContent = `MISSION PROGRESS: 0% (0/${winKillTarget} TARGETS)`;
 
   player = new Plane(800, 500, true, true);
 
@@ -857,7 +972,7 @@ function startGame() {
     friendlies.push(new Plane(600 - i * 120, 450 + (i % 3) * 60, false, true));
   }
 
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < battle.enemies; i++) {
     enemies.push(new Plane(1600 + i * 200, 400 + i * 120, false, false));
   }
 
@@ -868,8 +983,8 @@ function startGame() {
   groundTargets.push(new GroundTarget(200, 'turret'));
   groundTargets.push(new GroundTarget(800, 'turret'));
   groundTargets.push(new GroundTarget(1400, 'turret'));
-  groundTargets.push(new GroundTarget(-1200, 'gunboat'));
-  groundTargets.push(new GroundTarget(3000, 'gunboat'));
+  groundTargets.push(new GroundTarget(-1200, currentTerrain === 'HYBRID' ? 'gunboat' : 'turret'));
+  groundTargets.push(new GroundTarget(3000, currentTerrain === 'HYBRID' ? 'gunboat' : 'turret'));
 
   rainDrops = [];
   for (let i = 0; i < 120; i++) {
@@ -889,7 +1004,7 @@ function gameOver() {
   gameState = 'GAMEOVER';
   stallWarning.style.display = 'none';
   document.querySelector('#start-overlay h1').textContent = 'SQUAD WIPED OUT';
-  document.querySelector('#start-overlay p').innerHTML = `Final Score: <strong>${score}</strong> | Mission Progress: <strong>${totalTargetsEliminated}/${WIN_KILL_TARGET} Targets</strong>`;
+  document.querySelector('#start-overlay p').innerHTML = `Final Score: <strong>${score}</strong> | Mission Progress: <strong>${totalTargetsEliminated}/${winKillTarget} Targets</strong>`;
   document.querySelector('.start-btn').textContent = 'RETRY BATTLE';
   startOverlay.style.display = 'flex';
 }
@@ -897,9 +1012,10 @@ function gameOver() {
 function victory() {
   gameState = 'VICTORY';
   stallWarning.style.display = 'none';
-  document.querySelector('#start-overlay h1').textContent = 'VICTORY ACHIEVED!';
-  document.querySelector('#start-overlay p').innerHTML = `Island airspace secured!<br>Final Score: <strong>${score}</strong>`;
-  document.querySelector('.start-btn').textContent = 'PLAY AGAIN';
+  const nextBattle = CAMPAIGN[(campaignIndex + 1) % CAMPAIGN.length];
+  document.querySelector('#start-overlay h1').textContent = 'BATTLE WON';
+  document.querySelector('#start-overlay p').innerHTML = `${getCurrentBattle().name} secured.<br>Final Score: <strong>${score}</strong><br>Next operation: <strong>${nextBattle.name}</strong>`;
+  document.querySelector('.start-btn').textContent = 'NEXT BATTLE';
   startOverlay.style.display = 'flex';
 }
 
@@ -915,8 +1031,6 @@ function update() {
 
   player.update();
   if (player.hp > 0 && player.hp / player.maxHp <= 0.05) awardAchievement('closeCall');
-  const carrierLanding = (Math.abs(player.x - CARRIER_WEST_X) < 250 || Math.abs(player.x - CARRIER_EAST_X) < 250) && player.y > BASE_GROUND_Y - 180 && player.vy > 0;
-  if (carrierLanding) awardAchievement('touchAndGo');
   if (radioCooldown === 0 && enemies.some(enemy => !enemy.isDying && Math.hypot(enemy.x - player.x, enemy.y - player.y) < 500)) {
     playRadioChatter();
     radioCooldown = 240;
@@ -927,7 +1041,7 @@ function update() {
   camY = player.y - canvas.height / 2;
   camY = Math.max(0, Math.min(WORLD_HEIGHT - canvas.height, camY));
 
-  if (totalTargetsEliminated >= 10 && !halfTimeTriggered) {
+  if (currentTerrain === 'HYBRID' && currentWeather === 'CLEAR' && totalTargetsEliminated >= 10 && !halfTimeTriggered) {
     halfTimeTriggered = true;
     currentWeather = 'STORM';
     eventBanner.textContent = "CARRIER REINFORCEMENTS & STORM APPROACHING FROM BOTH OCEANS!";
@@ -974,7 +1088,7 @@ function update() {
     }
   }
 
-  if (enemies.length < 3 && totalTargetsEliminated < WIN_KILL_TARGET) {
+  if (enemies.length < 3 && totalTargetsEliminated < winKillTarget) {
     enemies.push(new Plane(player.x + 1000 + Math.random() * 300, Math.random() * 800 + 200, false, false));
   }
 
@@ -1038,9 +1152,19 @@ function update() {
           const angle = Math.atan2(b.y - e.y, b.x - e.x);
           b.ricochet(Math.cos(angle), Math.sin(angle));
           e.hp -= 5;
+          if (e.hp <= 0) {
+            e.hp = 0;
+            e.isDying = true;
+            if (b.owner) b.owner.kills++;
+          }
         } else {
           e.hp -= 12;
           spawnExplosion(b.x, b.y, 6);
+          if (e.hp <= 0) {
+            e.hp = 0;
+            e.isDying = true;
+            if (b.owner) b.owner.kills++;
+          }
           bullets.splice(i, 1);
         }
         break;
@@ -1083,7 +1207,7 @@ function update() {
     if (muzzleFlashes[i].life <= 0) muzzleFlashes.splice(i, 1);
   }
 
-  if (currentWeather === 'STORM') {
+  if (currentWeather === 'RAIN' || currentWeather === 'STORM') {
     rainDrops.forEach(r => {
       r.y += r.v;
       r.x -= 4;
@@ -1151,6 +1275,14 @@ function render() {
     skyGradient.addColorStop(0.4, '#1d4ed8');
     skyGradient.addColorStop(0.85, '#60a5fa');
     skyGradient.addColorStop(1.0, '#93c5fd');
+  } else if (currentWeather === 'NIGHT') {
+    skyGradient.addColorStop(0.0, '#020617');
+    skyGradient.addColorStop(0.55, '#172554');
+    skyGradient.addColorStop(1.0, '#334155');
+  } else if (currentWeather === 'CLOUDY') {
+    skyGradient.addColorStop(0.0, '#334155');
+    skyGradient.addColorStop(0.55, '#64748b');
+    skyGradient.addColorStop(1.0, '#cbd5e1');
   } else {
     skyGradient.addColorStop(0.0, '#090d16');
     skyGradient.addColorStop(0.5, '#1e293b');
@@ -1165,13 +1297,25 @@ function render() {
   const shakeY = (Math.random() - 0.5) * screenShake;
   ctx.translate(-Math.floor(camX + shakeX), -Math.floor(camY + shakeY));
 
+  if (currentTerrain !== 'HYBRID') {
+    const terrainStart = Math.floor(camX - 200);
+    const terrainEnd = Math.floor(camX + canvas.width + 200);
+    ctx.fillStyle = currentTerrain === 'DESERT' ? '#c28b4b' : '#166534';
+    ctx.beginPath();
+    ctx.moveTo(terrainStart, getGroundY(terrainStart));
+    for (let x = terrainStart; x <= terrainEnd; x += 8) ctx.lineTo(x, getGroundY(x));
+    ctx.lineTo(terrainEnd, BASE_GROUND_Y + 600);
+    ctx.lineTo(terrainStart, BASE_GROUND_Y + 600);
+    ctx.fill();
+  }
+
   clouds.filter(c => c.layer === 1).forEach(c => c.draw(camX, camY));
   clouds.filter(c => c.layer === 2).forEach(c => c.draw(camX, camY));
 
   const startX = Math.floor(camX - 200);
   const endX = Math.floor(camX + canvas.width + 200);
 
-  if (startX < LEFT_BEACH_END) {
+  if (currentTerrain === 'HYBRID' && startX < LEFT_BEACH_END) {
     const lOceanEndX = Math.min(endX, LEFT_OCEAN_END);
     if (startX < lOceanEndX) {
       ctx.fillStyle = '#0284c7';
@@ -1188,7 +1332,7 @@ function render() {
     });
   }
 
-  if (endX >= LEFT_OCEAN_END && startX < LEFT_BEACH_END) {
+  if (currentTerrain === 'HYBRID' && endX >= LEFT_OCEAN_END && startX < LEFT_BEACH_END) {
     const bStartX = Math.max(startX, LEFT_OCEAN_END);
     const bEndX = Math.min(endX, LEFT_BEACH_END);
 
@@ -1201,7 +1345,7 @@ function render() {
     ctx.fill();
   }
 
-  if (endX >= LEFT_BEACH_END && startX < RIGHT_BEACH_START) {
+  if (currentTerrain === 'HYBRID' && endX >= LEFT_BEACH_END && startX < RIGHT_BEACH_START) {
     const landStartX = Math.max(startX, LEFT_BEACH_END);
     const landEndX = Math.min(endX, RIGHT_BEACH_START);
 
@@ -1234,7 +1378,7 @@ function render() {
     }
   }
 
-  if (endX >= RIGHT_BEACH_START && startX < RIGHT_OCEAN_START) {
+  if (currentTerrain === 'HYBRID' && endX >= RIGHT_BEACH_START && startX < RIGHT_OCEAN_START) {
     const bStartX = Math.max(startX, RIGHT_BEACH_START);
     const bEndX = Math.min(endX, RIGHT_OCEAN_START);
 
@@ -1247,7 +1391,7 @@ function render() {
     ctx.fill();
   }
 
-  if (endX >= RIGHT_OCEAN_START) {
+  if (currentTerrain === 'HYBRID' && endX >= RIGHT_OCEAN_START) {
     const rOceanStartX = Math.max(startX, RIGHT_OCEAN_START);
     ctx.fillStyle = '#0284c7';
     ctx.fillRect(rOceanStartX, BASE_GROUND_Y + 70, endX - rOceanStartX + 200, 600);
@@ -1303,7 +1447,7 @@ function render() {
 
   ctx.restore();
 
-  if (currentWeather === 'STORM' && gameState === 'PLAYING') {
+  if ((currentWeather === 'RAIN' || currentWeather === 'STORM') && gameState === 'PLAYING') {
     ctx.strokeStyle = 'rgba(186, 230, 253, 0.4)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();

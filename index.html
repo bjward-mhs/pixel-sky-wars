@@ -14,6 +14,7 @@
   <div id="event-banner" class="wow-panel">CARRIER REINFORCEMENTS APPROACHING FROM BOTH OCEANS!</div>
   <div id="crt-overlay" aria-hidden="true"></div>
   <button id="crt-toggle" class="hud-btn" type="button" title="Toggle CRT display">CRT: OFF</button>
+  <button id="hangar-toggle" class="hud-btn" type="button" title="Open hangar">HANGAR</button>
   
   <div id="ui">
     <div class="wow-panel unit-frame">
@@ -39,6 +40,7 @@
   <div id="start-overlay" class="overlay">
     <div class="wow-panel overlay-card">
       <h1>PIXEL SKY WARS</h1>
+      <div id="battle-brief" class="battle-brief"></div>
       <section class="hangar" aria-label="Aircraft hangar">
         <div class="section-heading"><span>HANGAR / AIRCRAFT</span><span>HONOR <strong id="hangar-honor">0</strong></span></div>
         <div id="aircraft-options" class="aircraft-options"></div>
@@ -52,7 +54,9 @@
         <strong>W KEY</strong> - Fire Heavy Cannons<br>
         <strong>SHIFT KEY</strong> - Afterburner Boost<br>
         <strong>S KEY</strong> - Flaps Airbrake & Tight Turn<br>
-        <strong>CRT BUTTON</strong> - Toggle retro display filter<br><br>
+        <strong>CRT BUTTON</strong> - Toggle retro display filter<br>
+        <strong>HANGAR</strong> - Spend Honor to unlock aircraft<br>
+        <strong>CARRIER LANDING</strong> - Slow below 4.5 speed over a carrier deck<br><br>
         <em><strong>Dogfight Tactical Edition:</strong> Engine flight audio, upright sprite mechanics, AI evasion & stalling physics, heavy aircraft armor, and lead-target dogfighting!</em>
       </p>
       <button class="start-btn" onclick="startGame()">ENTER BATTLE</button>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pixel Sky Wars - Dogfight Tactical Edition</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="game-container">
+  <canvas id="game" width="960" height="540"></canvas>
+  <div id="stall-warning">⚠ STALL WARNING ⚠</div>
+  <div id="event-banner" class="wow-panel">CARRIER REINFORCEMENTS APPROACHING FROM BOTH OCEANS!</div>
+  
+  <div id="ui">
+    <div class="wow-panel unit-frame">
+      <div class="portrait-ring">🦅</div>
+      <div>
+        <div class="stat-label">SQUAD LEADER HULL</div>
+        <div class="bar-outer"><div id="hp-bar-inner"></div></div>
+      </div>
+      <div class="inline-stats">
+        <div class="stat-item"><span class="stat-label">SQUAD:</span><span class="stat-val" id="friendly-val" style="color: #38bdf8;">7</span></div>
+        <div class="stat-item"><span class="stat-label">HONOR:</span><span class="stat-val" id="score-val" style="color: #fef08a;">0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="bottom-progress-container">
+    <div id="wow-progress-frame" class="wow-panel">
+      <div id="progress-bar-outer"><div id="progress-bar-inner"></div></div>
+      <div id="progress-label">MISSION PROGRESS: 0%</div>
+    </div>
+  </div>
+
+  <div id="start-overlay" class="overlay">
+    <div class="wow-panel overlay-card">
+      <h1>PIXEL SKY WARS</h1>
+      <p>
+        <strong>MOUSE CURSOR</strong> - Aim & Vector Flight<br>
+        <strong>W KEY</strong> - Fire Heavy Cannons<br>
+        <strong>SHIFT KEY</strong> - Afterburner Boost<br>
+        <strong>S KEY</strong> - Flaps Airbrake & Tight Turn<br><br>
+        <em><strong>Dogfight Tactical Edition:</strong> Engine flight audio, upright sprite mechanics, AI evasion & stalling physics, heavy aircraft armor, and lead-target dogfighting!</em>
+      </p>
+      <button class="start-btn" onclick="startGame()">ENTER BATTLE</button>
+    </div>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>

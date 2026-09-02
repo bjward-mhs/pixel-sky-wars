@@ -40,6 +40,8 @@ let muzzleFlashes = [];
 let radioCooldown = 0;
 let campaignIndex = Number(localStorage.getItem('pixelSkyWarsCampaign') || 0);
 let currentTerrain = 'HYBRID';
+let enemyReserve = 0;
+let friendlyReserve = 0;
 
 const CAMPAIGN = [
   { name: 'Battle of Ember Coast', terrain: 'HYBRID', weather: 'CLEAR', kills: 20, enemies: 4, brief: 'Break the coastal air screen.' },
@@ -502,6 +504,7 @@ class Plane {
     this.landingCooldown = 0;
     this.isRetreating = false;
     this.kills = 0;
+    this.collisionCooldown = 0;
 
     this.updatePalette();
   }
@@ -517,6 +520,7 @@ class Plane {
   }
 
   update() {
+    if (this.collisionCooldown > 0) this.collisionCooldown--;
     if (this.landingCooldown > 0) {
       this.landingCooldown--;
       this.vx = 0;
@@ -690,14 +694,14 @@ class Plane {
       for (let other of allPlanes) {
         if (other && other !== this && !other.isDying && !other.dead) {
           let dist = Math.hypot(other.x - this.x, other.y - this.y);
-          if (dist < 220 && dist > 1) {
+          if (dist < 340 && dist > 1) {
             let angleToOther = Math.atan2(other.y - this.y, other.x - this.x);
             let diff = angleToOther - this.angle;
             while (diff < -Math.PI) diff += Math.PI * 2;
             while (diff > Math.PI) diff -= Math.PI * 2;
 
-            if (Math.abs(diff) < 1.4) {
-              avoidTurn += (diff > 0 ? -0.06 : 0.06) * (1 - dist / 220);
+            if (Math.abs(diff) < 2.2) {
+              avoidTurn += (diff > 0 ? -0.12 : 0.12) * (1 - dist / 340);
             }
           }
         }
@@ -955,6 +959,8 @@ function startGame() {
   currentTerrain = battle.terrain;
   currentWeather = battle.weather;
   renderBattleBrief();
+  enemyReserve = Math.max(0, battle.kills + 4 - battle.enemies);
+  friendlyReserve = 3;
   score = 0; gameTime = 0; craters = []; totalTargetsEliminated = 0;
   bullets = []; particles = []; smokeTrails = []; muzzleFlashes = []; clouds = []; friendlies = []; enemies = []; people = []; groundTargets = [];
   recentKills = []; radioCooldown = 0;
@@ -1060,11 +1066,20 @@ function update() {
     for (let j = i + 1; j < activePlanes.length; j++) {
       const p1 = activePlanes[i];
       const p2 = activePlanes[j];
-      if (Math.hypot(p1.x - p2.x, p1.y - p2.y) < 26) {
-        p1.hp = 0; p1.isDying = true;
-        p2.hp = 0; p2.isDying = true;
-        spawnExplosion((p1.x + p2.x) / 2, (p1.y + p2.y) / 2, 45);
-        screenShake = 22;
+      if (p1.collisionCooldown === 0 && p2.collisionCooldown === 0 && Math.hypot(p1.x - p2.x, p1.y - p2.y) < 26) {
+        const separationAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        p1.hp -= 45;
+        p2.hp -= 45;
+        p1.collisionCooldown = 30;
+        p2.collisionCooldown = 30;
+        p1.x -= Math.cos(separationAngle) * 18;
+        p1.y -= Math.sin(separationAngle) * 18;
+        p2.x += Math.cos(separationAngle) * 18;
+        p2.y += Math.sin(separationAngle) * 18;
+        p1.angle -= 0.35;
+        p2.angle += 0.35;
+        spawnExplosion((p1.x + p2.x) / 2, (p1.y + p2.y) / 2, 14);
+        screenShake = 8;
       }
     }
   }
@@ -1075,7 +1090,13 @@ function update() {
   for (let i = friendlies.length - 1; i >= 0; i--) {
     const f = friendlies[i];
     f.update();
-    if (f.dead) friendlies.splice(i, 1);
+    if (f.dead) {
+      friendlies.splice(i, 1);
+      if (friendlyReserve > 0) {
+        friendlies.push(new Plane(CARRIER_WEST_X + 140, BASE_GROUND_Y - 150, false, true));
+        friendlyReserve--;
+      }
+    }
   }
 
   for (let i = enemies.length - 1; i >= 0; i--) {
@@ -1088,8 +1109,9 @@ function update() {
     }
   }
 
-  if (enemies.length < 3 && totalTargetsEliminated < winKillTarget) {
+  if (enemies.length < 3 && enemyReserve > 0 && totalTargetsEliminated < winKillTarget) {
     enemies.push(new Plane(player.x + 1000 + Math.random() * 300, Math.random() * 800 + 200, false, false));
+    enemyReserve--;
   }
 
   for (let i = bullets.length - 1; i >= 0; i--) {

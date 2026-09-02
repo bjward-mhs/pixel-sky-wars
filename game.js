@@ -19,6 +19,9 @@ const aircraftOptions = document.getElementById('aircraft-options');
 const achievementList = document.getElementById('achievement-list');
 const versionBadge = document.getElementById('version-badge');
 const versionPanel = document.getElementById('version-panel');
+const modifierBrief = document.getElementById('modifier-brief');
+const upgradeHonor = document.getElementById('upgrade-honor');
+const upgradeOptions = document.getElementById('upgrade-options');
 
 // Audio Synthesizer Engine
 let audioCtx = null;
@@ -41,28 +44,38 @@ let smokeTrails = [];
 let muzzleFlashes = [];
 let radioCooldown = 0;
 const VERSION = {
-  number: '0.6.0',
+  number: '0.7.0',
   label: 'CAMPAIGN WEATHER BUILD',
-  changes: 'Campaign battles, varied weather, cloud variants, finite reserves'
+  changes: 'Mission modifiers, Ace pilots, carrier upgrades'
 };
 const lastSeenVersion = localStorage.getItem('pixelSkyWarsVersion');
 let campaignIndex = Number(localStorage.getItem('pixelSkyWarsCampaign') || 0);
 let currentTerrain = 'HYBRID';
 let enemyReserve = 0;
 let friendlyReserve = 0;
+let flakTimer = 0;
+const carrierUpgrades = {
+  repair: { name: 'DECK CREW', cost: 450, description: '+60 landing repair', level: 0, max: 3 },
+  reserves: { name: 'RESERVE WINGS', cost: 600, description: '+1 squad replacement', level: 0, max: 3 },
+  flak: { name: 'CARRIER FLAK', cost: 750, description: 'Carrier defense battery', level: 0, max: 2 }
+};
+const savedUpgrades = JSON.parse(localStorage.getItem('pixelSkyWarsCarrierUpgrades') || '{}');
+Object.keys(carrierUpgrades).forEach(id => { carrierUpgrades[id].level = Math.min(carrierUpgrades[id].max, Number(savedUpgrades[id] || 0)); });
 
 const CAMPAIGN = [
-  { name: 'Battle of Ember Coast', terrain: 'HYBRID', weather: 'CLEAR', kills: 20, enemies: 4, brief: 'Break the coastal air screen.' },
-  { name: 'Battle of Dust Meridian', terrain: 'DESERT', weather: 'CLEAR', kills: 22, enemies: 5, brief: 'Cross the dry basin under open skies.' },
-  { name: 'Battle of Iron Rain', terrain: 'LAND', weather: 'RAIN', kills: 24, enemies: 6, brief: 'Hold the mainland through a downpour.' },
-  { name: 'Battle of Cloud Citadel', terrain: 'HYBRID', weather: 'CLOUDY', kills: 26, enemies: 6, brief: 'Find the enemy fleet above the cloud shelf.' },
-  { name: 'Battle of Moonlit Straits', terrain: 'HYBRID', weather: 'NIGHT', kills: 28, enemies: 7, brief: 'Finish the campaign in the dark.' }
+  { name: 'Battle of Ember Coast', terrain: 'HYBRID', weather: 'CLEAR', modifiers: ['WIND EAST', 'FLAK LOW'], kills: 20, enemies: 4, aces: 0, brief: 'Break the coastal air screen.' },
+  { name: 'Battle of Dust Meridian', terrain: 'DESERT', weather: 'CLEAR', modifiers: ['DUST FOG', 'WIND SOUTH'], kills: 22, enemies: 5, aces: 1, brief: 'Cross the dry basin under open skies.' },
+  { name: 'Battle of Iron Rain', terrain: 'LAND', weather: 'RAIN', modifiers: ['HEAVY FLAK', 'LOW VISIBILITY'], kills: 24, enemies: 6, aces: 1, brief: 'Hold the mainland through a downpour.' },
+  { name: 'Battle of Cloud Citadel', terrain: 'HYBRID', weather: 'CLOUDY', modifiers: ['CLOUD BANKS', 'WIND WEST'], kills: 26, enemies: 6, aces: 2, brief: 'Find the enemy fleet above the cloud shelf.' },
+  { name: 'Battle of Moonlit Straits', terrain: 'HYBRID', weather: 'NIGHT', modifiers: ['NIGHT FOG', 'HEAVY FLAK'], kills: 28, enemies: 7, aces: 2, brief: 'Finish the campaign in the dark.' }
 ];
 
 function getCurrentBattle() { return CAMPAIGN[Math.min(campaignIndex, CAMPAIGN.length - 1)]; }
+function hasModifier(name) { return getCurrentBattle().modifiers.some(modifier => modifier.includes(name)); }
 function renderBattleBrief() {
   const battle = getCurrentBattle();
   battleBrief.textContent = `${battle.name} / ${battle.terrain} / ${battle.weather} / ${battle.brief}`;
+  modifierBrief.textContent = `MODIFIERS: ${battle.modifiers.join(' / ')}`;
 }
 function renderVersionTracker() {
   versionBadge.textContent = `BUILD ${VERSION.number}`;
@@ -80,6 +93,7 @@ const AIRCRAFT = {
 
 function renderHangar() {
   hangarHonor.textContent = honorBank;
+  upgradeHonor.textContent = honorBank;
   aircraftOptions.innerHTML = Object.entries(AIRCRAFT).map(([id, craft]) => {
     const unlocked = unlockedAircraft.includes(id);
     return `<button class="aircraft-card ${selectedAircraft === id ? 'selected' : ''} ${unlocked ? '' : 'locked'}" data-aircraft="${id}"><strong>${craft.name}</strong><small>${unlocked ? craft.description : `UNLOCK ${craft.cost} HONOR`}</small></button>`;
@@ -97,6 +111,21 @@ function renderHangar() {
     }
     selectedAircraft = aircraftId;
     localStorage.setItem('pixelSkyWarsAircraft', selectedAircraft);
+    renderHangar();
+  }));
+  upgradeOptions.innerHTML = Object.entries(carrierUpgrades).map(([id, upgrade]) => {
+    const maxed = upgrade.level >= upgrade.max;
+    const cost = upgrade.cost * (upgrade.level + 1);
+    return `<button class="upgrade-card ${maxed ? 'maxed' : ''}" data-upgrade="${id}" ${maxed ? 'disabled' : ''}><strong>${upgrade.name} LV ${upgrade.level}/${upgrade.max}</strong><small>${maxed ? 'MAXIMUM READY' : `${upgrade.description} / ${cost} HONOR`}</small></button>`;
+  }).join('');
+  upgradeOptions.querySelectorAll('[data-upgrade]').forEach(button => button.addEventListener('click', () => {
+    const upgrade = carrierUpgrades[button.dataset.upgrade];
+    const cost = upgrade.cost * (upgrade.level + 1);
+    if (upgrade.level >= upgrade.max || honorBank < cost) return;
+    honorBank -= cost;
+    upgrade.level++;
+    localStorage.setItem('pixelSkyWarsHonor', honorBank);
+    localStorage.setItem('pixelSkyWarsCarrierUpgrades', JSON.stringify(Object.fromEntries(Object.entries(carrierUpgrades).map(([id, item]) => [id, item.level]))));
     renderHangar();
   }));
 }
@@ -519,6 +548,7 @@ class Plane {
     this.isRetreating = false;
     this.kills = 0;
     this.collisionCooldown = 0;
+    this.isAce = false;
 
     this.updatePalette();
   }
@@ -582,6 +612,7 @@ class Plane {
     }
 
     if (currentWeather === 'STORM') this.x -= 0.6;
+    if (this.isAce && !this.isRetreating) this.angle += Math.sin(gameTime * 0.08) * 0.012;
 
     if (this.isPlayer) {
       const targetWorldX = mouseX + camX;
@@ -662,7 +693,7 @@ class Plane {
       if (overCarrier && this.speed < 4.5) {
         this.y = BASE_GROUND_Y - 120;
         this.speed = 0;
-        this.hp = Math.min(this.maxHp, this.hp + 120);
+        this.hp = Math.min(this.maxHp, this.hp + 120 + carrierUpgrades.repair.level * 60);
         this.landingCooldown = 45;
         awardAchievement('touchAndGo');
         eventBanner.textContent = 'CARRIER DECK LANDING: HULL REPAIRED';
@@ -974,7 +1005,8 @@ function startGame() {
   currentWeather = battle.weather;
   renderBattleBrief();
   enemyReserve = Math.max(0, battle.kills + 4 - battle.enemies);
-  friendlyReserve = 3;
+  friendlyReserve = 3 + carrierUpgrades.reserves.level;
+  flakTimer = 0;
   score = 0; gameTime = 0; craters = []; totalTargetsEliminated = 0;
   bullets = []; particles = []; smokeTrails = []; muzzleFlashes = []; clouds = []; friendlies = []; enemies = []; people = []; groundTargets = [];
   recentKills = []; radioCooldown = 0;
@@ -993,7 +1025,15 @@ function startGame() {
   }
 
   for (let i = 0; i < battle.enemies; i++) {
-    enemies.push(new Plane(1600 + i * 200, 400 + i * 120, false, false));
+    const enemy = new Plane(1600 + i * 200, 400 + i * 120, false, false);
+    if (i < battle.aces) {
+      enemy.isAce = true;
+      enemy.maxHp = 420;
+      enemy.hp = enemy.maxHp;
+      enemy.speed += 1.2;
+      enemy.palette = { '1': '#7c3aed', '2': '#c084fc', '3': '#fef08a', '4': '#f97316' };
+    }
+    enemies.push(enemy);
   }
 
   for (let i = 0; i < 6; i++) {
@@ -1048,6 +1088,15 @@ function update() {
   gameTime++;
   if (screenShake > 0) screenShake *= 0.88;
   if (radioCooldown > 0) radioCooldown--;
+  flakTimer++;
+
+  if (hasModifier('WIND')) {
+    const windDirection = hasModifier('EAST') || hasModifier('WEST') ? (hasModifier('WEST') ? -1 : 1) : 0;
+    const windStrength = windDirection || (hasModifier('SOUTH') ? 0.5 : 0);
+    player.x += windStrength * 0.18;
+    friendlies.forEach(plane => { plane.x += windStrength * 0.18; });
+    enemies.forEach(plane => { plane.x += windStrength * 0.18; });
+  }
 
   player.update();
   if (player.hp > 0 && player.hp / player.maxHp <= 0.05) awardAchievement('closeCall');
@@ -1124,8 +1173,28 @@ function update() {
   }
 
   if (enemies.length < 3 && enemyReserve > 0 && totalTargetsEliminated < winKillTarget) {
-    enemies.push(new Plane(player.x + 1000 + Math.random() * 300, Math.random() * 800 + 200, false, false));
+    const enemy = new Plane(player.x + 1000 + Math.random() * 300, Math.random() * 800 + 200, false, false);
+    enemy.isAce = Math.random() < getCurrentBattle().aces / Math.max(1, getCurrentBattle().enemies);
+    if (enemy.isAce) {
+      enemy.maxHp = 420;
+      enemy.hp = enemy.maxHp;
+      enemy.speed += 1.2;
+      enemy.palette = { '1': '#7c3aed', '2': '#c084fc', '3': '#fef08a', '4': '#f97316' };
+    }
+    enemies.push(enemy);
     enemyReserve--;
+  }
+
+  if (flakTimer >= 45) {
+    flakTimer = 0;
+    if (hasModifier('HEAVY FLAK') || carrierUpgrades.flak.level > 0) {
+      enemies.forEach(enemy => {
+        if (!enemy.isDying && Math.abs(enemy.x - CARRIER_WEST_X) < 520) {
+          enemy.hp -= hasModifier('HEAVY FLAK') ? 5 : carrierUpgrades.flak.level * 8;
+          spawnExplosion(enemy.x, enemy.y, 3);
+        }
+      });
+    }
   }
 
   for (let i = bullets.length - 1; i >= 0; i--) {
@@ -1492,6 +1561,11 @@ function render() {
       ctx.lineTo(r.x - 6, r.y + r.l);
     });
     ctx.stroke();
+  }
+
+  if ((hasModifier('FOG') || hasModifier('VISIBILITY')) && gameState === 'PLAYING') {
+    ctx.fillStyle = currentWeather === 'NIGHT' ? 'rgba(2, 6, 23, 0.38)' : 'rgba(203, 213, 225, 0.2)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
   if (gameState === 'PLAYING') drawRadar();

@@ -17,6 +17,8 @@ const hangarToggle = document.getElementById('hangar-toggle');
 const hangarHonor = document.getElementById('hangar-honor');
 const aircraftOptions = document.getElementById('aircraft-options');
 const achievementList = document.getElementById('achievement-list');
+const versionBadge = document.getElementById('version-badge');
+const versionPanel = document.getElementById('version-panel');
 
 // Audio Synthesizer Engine
 let audioCtx = null;
@@ -38,6 +40,12 @@ let recentKills = [];
 let smokeTrails = [];
 let muzzleFlashes = [];
 let radioCooldown = 0;
+const VERSION = {
+  number: '0.6.0',
+  label: 'CAMPAIGN WEATHER BUILD',
+  changes: 'Campaign battles, varied weather, cloud variants, finite reserves'
+};
+const lastSeenVersion = localStorage.getItem('pixelSkyWarsVersion');
 let campaignIndex = Number(localStorage.getItem('pixelSkyWarsCampaign') || 0);
 let currentTerrain = 'HYBRID';
 let enemyReserve = 0;
@@ -56,7 +64,13 @@ function renderBattleBrief() {
   const battle = getCurrentBattle();
   battleBrief.textContent = `${battle.name} / ${battle.terrain} / ${battle.weather} / ${battle.brief}`;
 }
+function renderVersionTracker() {
+  versionBadge.textContent = `BUILD ${VERSION.number}`;
+  versionPanel.innerHTML = `<strong>VERSION ${VERSION.number}</strong> / ${VERSION.label}<br>${VERSION.changes}${lastSeenVersion && lastSeenVersion !== VERSION.number ? '<br><strong>UPDATE DETECTED</strong>' : ''}`;
+  localStorage.setItem('pixelSkyWarsVersion', VERSION.number);
+}
 renderBattleBrief();
+renderVersionTracker();
 
 const AIRCRAFT = {
   scout: { name: 'SCOUT', cost: 0, speed: 6, hp: 300, turn: 0.038, description: 'Balanced flight' },

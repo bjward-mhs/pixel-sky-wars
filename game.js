@@ -9,8 +9,8 @@ const objective = document.querySelector('#objective');
 const artilleryReadout = document.querySelector('#artillery-readout');
 const versionReadout = document.querySelector('#version-readout');
 
-const GAME_VERSION = '0.7.0';
-const VERSION_HISTORY = [{ version: '0.7.0', title: 'Frontline Artillery Build' }, { version: '0.6.0', title: 'Campaign Weather Build' }];
+const GAME_VERSION = '0.9.0';
+const VERSION_HISTORY = [{ version: '0.9.0', title: 'Player-Centered Side View' }, { version: '0.8.0', title: 'Fullscreen Terrain Build' }, { version: '0.7.0', title: 'Frontline Artillery Build' }, { version: '0.6.0', title: 'Campaign Weather Build' }];
 const TILE = 4;
 const WORLD_WIDTH = 720;
 const WORLD_HEIGHT = 240;
@@ -29,6 +29,7 @@ let explosions = [];
 let particles = [];
 let units = [];
 let cameraX = 0;
+let cameraY = 0;
 let gameOver = false;
 let artilleryMode = false;
 let audioContext;
@@ -39,7 +40,7 @@ const player = { x: 48, y: 90, velocityY: 0, grounded: false, direction: 1, team
 function random() { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; }
 
 function generateWorld() {
-  const groundLine = 76;
+  const groundLine = 110;
   surfaceHeights = Array.from({ length: WORLD_WIDTH }, (_, x) => groundLine + Math.floor(Math.sin(x * .055) * 4 + Math.sin(x * .017) * 7 + (random() - .5) * 4));
   terrain = Array.from({ length: WORLD_HEIGHT }, (_, y) => Array.from({ length: WORLD_WIDTH }, (_, x) => {
     const surface = surfaceHeights[x];
@@ -61,34 +62,36 @@ function generateWorld() {
   });
   rain = Array.from({ length: 180 }, () => ({ x: random() * WORLD_WIDTH, y: random() * 180, length: 3 + random() * 7, speed: 60 + random() * 90 }));
   bullets = []; explosions = []; particles = []; units = [];
-  player.x = 86; player.y = 65; player.velocityY = 0; player.health = 100; player.skin = skinTones[Math.floor(random() * skinTones.length)]; player.direction = 1; player.cooldown = 0; player.artilleryCooldown = 0; player.alive = true;
+  player.x = 86; player.y = groundHeightAt(86) - 3; player.velocityY = 0; player.health = 100; player.skin = skinTones[Math.floor(random() * skinTones.length)]; player.direction = 1; player.cooldown = 0; player.artilleryCooldown = 0; player.alive = true;
   for (let index = 0; index < 6; index += 1) units.push(makeUnit(98 + index * 10, 'allied'));
   for (let index = 0; index < 9; index += 1) units.push(makeUnit(610 + index * 8, 'enemy'));
   if (seedReadout) seedReadout.textContent = `SEED ${String(Math.abs(Math.floor(seed))).padStart(6, '0').slice(-6)}`;
-  cameraX = Math.max(0, player.x - viewWidth() / 2); gameOver = false; artilleryMode = false; if (objective) objective.textContent = 'Advance through the trenches. Keep the original line.'; updateArtilleryReadout();
+  cameraX = Math.max(0, player.x - viewWidth() / 2); cameraY = Math.max(0, player.y - viewHeight() / 2); gameOver = false; artilleryMode = false; if (objective) objective.textContent = 'Advance through the trenches. Keep the original line.'; updateArtilleryReadout();
   if (versionReadout) versionReadout.textContent = `v${GAME_VERSION}`;
 }
 
 function makeUnit(x, team) { return { x, y: 80, velocityY: 0, direction: team === 'allied' ? 1 : -1, team, skin: skinTones[Math.floor(random() * skinTones.length)], health: 100, cooldown: random() * 1.5, alive: true }; }
 function groundHeightAt(x) { const column = terrain[Math.max(0, Math.min(WORLD_WIDTH - 1, Math.floor(x)))]; for (let y = 0; y < WORLD_HEIGHT; y += 1) if (column?.[y] !== 'sky' && column?.[y] !== 'cloud' && column?.[y] !== 'mist') return y; return 112; }
 function viewWidth() { return artilleryMode ? Math.min(ARTILLERY_VIEW_WIDTH, WORLD_WIDTH) : canvas.width / TILE; }
+function viewHeight() { return canvas.height / TILE; }
 function screenScale() { return artilleryMode ? .72 : 1; }
 function screenX(worldX) { return (worldX - cameraX) * TILE * screenScale(); }
+function screenY(worldY) { return (worldY - cameraY) * TILE; }
 
 function drawWorld() {
   context.fillStyle = palette.sky; context.fillRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = palette.cloud; context.fillRect(0, 38 * TILE, canvas.width, 22 * TILE);
-  context.fillStyle = '#475850'; context.fillRect(0, 70 * TILE, canvas.width, 10 * TILE);
-  const startX = Math.max(0, Math.floor(cameraX)); const endX = Math.min(WORLD_WIDTH, startX + viewWidth() + 2); const scaledTile = TILE * screenScale();
-  for (let y = 0; y < WORLD_HEIGHT; y += 1) for (let x = startX; x < endX; x += 1) { const material = terrain[y][x]; if (material !== 'sky') { context.fillStyle = palette[material]; context.fillRect(screenX(x), y * TILE, scaledTile, TILE); } }
+  context.fillStyle = palette.cloud; context.fillRect(0, screenY(38), canvas.width, 22 * TILE);
+  context.fillStyle = '#475850'; context.fillRect(0, screenY(70), canvas.width, 10 * TILE);
+  const startX = Math.max(0, Math.floor(cameraX)); const endX = Math.min(WORLD_WIDTH, startX + viewWidth() + 2); const startY = Math.max(0, Math.floor(cameraY)); const endY = Math.min(WORLD_HEIGHT, startY + viewHeight() + 2); const scaledTile = TILE * screenScale();
+  for (let y = startY; y < endY; y += 1) for (let x = startX; x < endX; x += 1) { const material = terrain[y][x]; if (material !== 'sky') { context.fillStyle = palette[material]; context.fillRect(screenX(x), screenY(y), scaledTile, TILE); } }
   trenches.forEach(drawTrench); drawArtilleryStation(); drawRain(); drawExplosions(); drawBullets(); units.filter(unit => unit.alive).forEach(drawUnit); drawUnit(player); if (gameOver) drawGameOver();
 }
 
 function drawTrench(trench) {
   const top = groundHeightAt(trench.start + 3); const color = trench.owner === 'allied' ? palette.blue : trench.owner === 'enemy' ? palette.red : palette.metal;
-  const scaledTile = TILE * screenScale(); context.fillStyle = palette.timberDark; context.fillRect(screenX(trench.start), (top - 2) * TILE, trench.width * scaledTile, TILE);
-  context.fillStyle = palette.timber; for (let x = trench.start + 2; x < trench.start + trench.width - 1; x += 5) context.fillRect(screenX(x), (top - 2) * TILE, scaledTile, (trench.bottom - top + 1) * TILE);
-  context.fillStyle = color; context.fillRect(screenX(trench.start + 2), (top - 3) * TILE, (trench.width - 4) * scaledTile, TILE);
+  const scaledTile = TILE * screenScale(); context.fillStyle = palette.timberDark; context.fillRect(screenX(trench.start), screenY(top - 2), trench.width * scaledTile, TILE);
+  context.fillStyle = palette.timber; for (let x = trench.start + 2; x < trench.start + trench.width - 1; x += 5) context.fillRect(screenX(x), screenY(top - 2), scaledTile, (trench.bottom - top + 1) * TILE);
+  context.fillStyle = color; context.fillRect(screenX(trench.start + 2), screenY(top - 3), (trench.width - 4) * scaledTile, TILE);
 }
 
 function drawArtilleryStation() {
@@ -96,15 +99,15 @@ function drawArtilleryStation() {
   if (!trench) return;
   const top = groundHeightAt(trench.start + 10);
   const x = screenX(trench.start + 10);
-  context.fillStyle = palette.timberDark; context.fillRect(x - 4, (top - 9) * TILE, 10, TILE * 7);
-  context.fillStyle = palette.metal; context.fillRect(x - 2, (top - 10) * TILE, 14, TILE * 2);
-  context.fillStyle = palette.timber; context.fillRect(x + 6, (top - 13) * TILE, 3, TILE * 5);
+  context.fillStyle = palette.timberDark; context.fillRect(x - 4, screenY(top - 9), 10, TILE * 7);
+  context.fillStyle = palette.metal; context.fillRect(x - 2, screenY(top - 10), 14, TILE * 2);
+  context.fillStyle = palette.timber; context.fillRect(x + 6, screenY(top - 13), 3, TILE * 5);
 }
 
-function drawRain() { context.strokeStyle = 'rgba(183, 203, 193, .36)'; context.lineWidth = 1; rain.forEach(drop => { const x = screenX(drop.x); if (x > -10 && x < canvas.width + 10) { context.beginPath(); context.moveTo(x, drop.y * TILE); context.lineTo(x - 2, drop.y * TILE + drop.length); context.stroke(); } }); }
-function drawBullets() { context.fillStyle = '#f0d59a'; bullets.forEach(bullet => context.fillRect(screenX(bullet.x), bullet.y * TILE, 1, 1)); }
-function drawUnit(unit) { const x = Math.round(screenX(unit.x)); const y = Math.round(unit.y * TILE); const scaledTile = TILE * screenScale(); if (x < -8 || x > canvas.width + 8) return; context.fillStyle = unit.skin; context.fillRect(x, y, scaledTile, TILE); context.fillStyle = unit.team === 'allied' ? palette.green : palette.redDark; context.fillRect(x, y + TILE, scaledTile, TILE); context.fillStyle = unit.team === 'allied' ? palette.greenDark : palette.red; context.fillRect(x, y + TILE * 2, scaledTile, TILE); context.fillStyle = unit.team === 'allied' ? palette.blue : palette.red; context.fillRect(x + (unit.direction > 0 ? scaledTile : -scaledTile), y + TILE * 2, scaledTile, TILE); }
-function drawExplosions() { explosions.forEach(explosion => { context.fillStyle = `rgba(236, 169, 91, ${explosion.life})`; context.beginPath(); context.arc(screenX(explosion.x), explosion.y * TILE, explosion.radius * TILE, 0, Math.PI * 2); context.fill(); }); particles.forEach(particle => { context.fillStyle = particle.color; context.fillRect(screenX(particle.x), particle.y * TILE, TILE, TILE); }); }
+function drawRain() { context.strokeStyle = 'rgba(183, 203, 193, .36)'; context.lineWidth = 1; rain.forEach(drop => { const x = screenX(drop.x); if (x > -10 && x < canvas.width + 10) { context.beginPath(); context.moveTo(x, screenY(drop.y)); context.lineTo(x - 2, screenY(drop.y) + drop.length); context.stroke(); } }); }
+function drawBullets() { context.fillStyle = '#f0d59a'; bullets.forEach(bullet => context.fillRect(screenX(bullet.x), screenY(bullet.y), 1, 1)); }
+function drawUnit(unit) { const x = Math.round(screenX(unit.x)); const y = Math.round(screenY(unit.y)); const scaledTile = TILE * screenScale(); if (x < -8 || x > canvas.width + 8) return; context.fillStyle = unit.skin; context.fillRect(x, y, scaledTile, TILE); context.fillStyle = unit.team === 'allied' ? palette.green : palette.redDark; context.fillRect(x, y + TILE, scaledTile, TILE); context.fillStyle = unit.team === 'allied' ? palette.greenDark : palette.red; context.fillRect(x, y + TILE * 2, scaledTile, TILE); context.fillStyle = unit.team === 'allied' ? palette.blue : palette.red; context.fillRect(x + (unit.direction > 0 ? scaledTile : -scaledTile), y + TILE * 2, scaledTile, TILE); }
+function drawExplosions() { explosions.forEach(explosion => { context.fillStyle = `rgba(236, 169, 91, ${explosion.life})`; context.beginPath(); context.arc(screenX(explosion.x), screenY(explosion.y), explosion.radius * TILE, 0, Math.PI * 2); context.fill(); }); particles.forEach(particle => { context.fillStyle = particle.color; context.fillRect(screenX(particle.x), screenY(particle.y), TILE, TILE); }); }
 function drawGameOver() { context.fillStyle = 'rgba(8, 12, 12, .78)'; context.fillRect(0, 0, canvas.width, canvas.height); context.fillStyle = '#e2d8bf'; context.font = '700 28px Barlow Condensed, sans-serif'; context.textAlign = 'center'; context.fillText('THE ORIGINAL LINE HAS FALLEN', canvas.width / 2, canvas.height / 2 - 8); context.font = '14px DM Mono, monospace'; context.fillText('PRESS NEW BATTLE TO RETURN TO THE FRONT', canvas.width / 2, canvas.height / 2 + 21); context.textAlign = 'left'; }
 function updateArtilleryReadout() { if (artilleryReadout) artilleryReadout.textContent = artilleryMode ? 'ARTILLERY VIEW / LEFT CLICK TO FIRE / E TO EXIT' : 'RIFLE READY / FIND THE GUN'; }
 function canEnterArtillery() { const trench = trenches[0]; return trench?.owner === 'allied' && Math.abs(player.x - (trench.start + 10)) < 15; }
@@ -122,14 +125,14 @@ function updateUnit(unit, delta) { if (!unit.alive) return; const enemies = unit
 function updateTrenches(delta) { trenches.forEach(trench => { const occupants = units.concat(player).filter(unit => unit.alive && unit.x > trench.start + 3 && unit.x < trench.start + trench.width - 3); const allied = occupants.filter(unit => unit.team === 'allied').length; const enemy = occupants.filter(unit => unit.team === 'enemy').length; if (allied && !enemy && trench.owner !== 'allied') trench.capture = Math.min(100, trench.capture + delta * 12); if (enemy && !allied && trench.owner !== 'enemy') trench.capture = Math.max(-100, trench.capture - delta * 12); if (trench.capture >= 100) trench.owner = 'allied'; if (trench.capture <= -100) trench.owner = 'enemy'; }); const original = trenches[0]; if (frontReadout) frontReadout.textContent = `FRONT LINE / ${String(trenches.filter(trench => trench.owner === 'allied').length).padStart(2, '0')}`; if (original.owner === 'enemy' && !gameOver) { gameOver = true; if (objective) objective.textContent = 'The original trench was captured.'; sound('blast'); } }
 
 function update(delta) {
-  if (!gameOver) { const move = (keys.has('a') ? -1 : 0) + (keys.has('d') ? 1 : 0); player.x = Math.max(2, Math.min(WORLD_WIDTH - 3, player.x + move * delta * 30)); if (move) player.direction = move; if (artilleryMode && !canEnterArtillery()) { artilleryMode = false; updateArtilleryReadout(); } player.velocityY += 12 * delta; player.y += player.velocityY * delta; const floor = groundHeightAt(player.x) - 3; if (player.y >= floor) { player.y = floor; player.velocityY = 0; player.grounded = true; } else player.grounded = false; player.cooldown = Math.max(0, player.cooldown - delta); player.artilleryCooldown = Math.max(0, player.artilleryCooldown - delta); units.forEach(unit => { unit.cooldown = Math.max(0, unit.cooldown - delta); updateUnit(unit, delta); }); updateBullets(delta); updateTrenches(delta); rain.forEach(drop => { drop.y += drop.speed * delta / TILE; drop.x -= delta * 8; if (drop.y > 180) { drop.y = -drop.length; drop.x = cameraX + random() * viewWidth(); } }); explosions = explosions.filter(explosion => { explosion.life -= delta * 2; explosion.radius += delta * 18; return explosion.life > 0; }); particles = particles.filter(particle => { particle.y += delta * 20; particle.x += (random() - .5) * delta * 10; return particle.y < WORLD_HEIGHT; }); cameraX += (player.x - cameraX - viewWidth() / 2) * Math.min(1, delta * 4); cameraX = Math.max(0, Math.min(WORLD_WIDTH - viewWidth(), cameraX)); }
+  if (!gameOver) { const move = (keys.has('a') ? -1 : 0) + (keys.has('d') ? 1 : 0); player.x = Math.max(2, Math.min(WORLD_WIDTH - 3, player.x + move * delta * 30)); if (move) player.direction = move; if (artilleryMode && !canEnterArtillery()) { artilleryMode = false; updateArtilleryReadout(); } player.velocityY += 12 * delta; player.y += player.velocityY * delta; const floor = groundHeightAt(player.x) - 3; if (player.y >= floor) { player.y = floor; player.velocityY = 0; player.grounded = true; } else player.grounded = false; player.cooldown = Math.max(0, player.cooldown - delta); player.artilleryCooldown = Math.max(0, player.artilleryCooldown - delta); units.forEach(unit => { unit.cooldown = Math.max(0, unit.cooldown - delta); updateUnit(unit, delta); }); updateBullets(delta); updateTrenches(delta); rain.forEach(drop => { drop.y += drop.speed * delta / TILE; drop.x -= delta * 8; if (drop.y > cameraY + viewHeight()) { drop.y = cameraY - drop.length / TILE; drop.x = cameraX + random() * viewWidth(); } }); explosions = explosions.filter(explosion => { explosion.life -= delta * 2; explosion.radius += delta * 18; return explosion.life > 0; }); particles = particles.filter(particle => { particle.y += delta * 20; particle.x += (random() - .5) * delta * 10; return particle.y < WORLD_HEIGHT; }); cameraX += (player.x - cameraX - viewWidth() / 2) * Math.min(1, delta * 4); cameraY += (player.y - cameraY - viewHeight() / 2) * Math.min(1, delta * 5); cameraX = Math.max(0, Math.min(WORLD_WIDTH - viewWidth(), cameraX)); cameraY = Math.max(0, Math.min(WORLD_HEIGHT - viewHeight(), cameraY)); }
   drawWorld(); requestAnimationFrame(frame);
 }
 function frame(time) { const delta = Math.min(.05, (time - lastTime) / 1000 || 0); lastTime = time; update(delta); }
 function pointerWorldX(event) { const bounds = canvas.getBoundingClientRect(); return cameraX + ((event.clientX - bounds.left) * canvas.width / bounds.width) / (TILE * screenScale()); }
-function pointerWorldY(event) { const bounds = canvas.getBoundingClientRect(); return ((event.clientY - bounds.top) * canvas.height / bounds.height) / TILE; }
+function pointerWorldY(event) { const bounds = canvas.getBoundingClientRect(); return cameraY + ((event.clientY - bounds.top) * canvas.height / bounds.height) / TILE; }
 
-window.addEventListener('keydown', event => { const key = event.key.toLowerCase(); if (['a', 'd', 'w', 'e', 'f'].includes(key)) event.preventDefault(); keys.add(key); startAudio(); if (key === 'w' && player.grounded && !gameOver) player.velocityY = -5; if (key === 'e' && !event.repeat) toggleArtillery(); if (key === 'f' && !event.repeat && !artilleryMode) fire(player); });
+window.addEventListener('keydown', event => { const key = event.key.toLowerCase(); if (['a', 'd', 'w', 'e', 'f', 'r'].includes(key)) event.preventDefault(); keys.add(key); startAudio(); if (key === 'w' && player.grounded && !gameOver) player.velocityY = -5; if (key === 'e' && !event.repeat) toggleArtillery(); if (key === 'f' && !event.repeat && !artilleryMode) fire(player); if (key === 'r' && !event.repeat) { seed = Math.floor(Math.random() * 1000000); generateWorld(); } });
 window.addEventListener('keyup', event => keys.delete(event.key.toLowerCase()));
 canvas.addEventListener('pointerdown', event => { startAudio(); if (artilleryMode) artillery(pointerWorldX(event), pointerWorldY(event)); else fire(player, pointerWorldX(event) < player.x ? -1 : 1); });
 if (regenerateButton) regenerateButton.addEventListener('click', () => { seed = Math.floor(Math.random() * 1000000); generateWorld(); startAudio(); });

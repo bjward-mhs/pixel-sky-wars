@@ -1,76 +1,47 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pixel Sky Wars - Dogfight Tactical Edition</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trench Weather</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-<div id="game-container">
-  <canvas id="game" width="960" height="540"></canvas>
-  <div id="stall-warning">⚠ STALL WARNING ⚠</div>
-  <div id="event-banner" class="wow-panel">CARRIER REINFORCEMENTS APPROACHING FROM BOTH OCEANS!</div>
-  <div id="crt-overlay" aria-hidden="true"></div>
-  <button id="crt-toggle" class="hud-btn" type="button" title="Toggle CRT display">CRT: OFF</button>
-  <button id="hangar-toggle" class="hud-btn" type="button" title="Open hangar">HANGAR</button>
-  <div id="version-badge" class="version-badge"></div>
-  
-  <div id="ui">
-    <div class="wow-panel unit-frame">
-      <div class="portrait-ring">🦅</div>
+  <main class="shell">
+    <header class="topbar">
       <div>
-        <div class="stat-label">SQUAD LEADER HULL</div>
-        <div class="bar-outer"><div id="hp-bar-inner"></div></div>
+        <p class="kicker">FIELD STUDY // 01</p>
+        <h1>Trench Weather</h1>
       </div>
-      <div class="inline-stats">
-        <div class="stat-item"><span class="stat-label">SQUAD:</span><span class="stat-val" id="friendly-val" style="color: #38bdf8;">7</span></div>
-        <div class="stat-item"><span class="stat-label">HONOR:</span><span class="stat-val" id="score-val" style="color: #fef08a;">0</span></div>
+      <div class="status"><span class="status-light"></span>RAIN FRONT / ACTIVE <strong id="version-readout">v0.7.0</strong></div>
+    </header>
+
+    <section class="briefing" aria-label="Game controls">
+      <div class="briefing-copy">
+        <p class="label">NO. 14 // FRONTLINE SIMULATION</p>
+        <p id="objective">Advance through the trenches. Keep the original line.</p>
       </div>
-    </div>
-  </div>
+      <div class="controls">
+        <button id="regenerate" type="button"><span aria-hidden="true">↻</span> New battle</button>
+        <span class="hint"><kbd>A</kbd><kbd>D</kbd> move <span class="dot">•</span> <kbd>W</kbd> jump <span class="dot">•</span> <kbd>F</kbd> fire <span class="dot">•</span> <kbd>E</kbd> enter gun / click</span>
+      </div>
+    </section>
 
-  <div id="bottom-progress-container">
-    <div id="wow-progress-frame" class="wow-panel">
-      <div id="progress-bar-outer"><div id="progress-bar-inner"></div></div>
-      <div id="progress-label">MISSION PROGRESS: 0%</div>
-    </div>
-  </div>
+    <section class="viewport-wrap">
+      <div class="viewport-meta"><span id="front-readout">FRONT LINE / 01</span><span id="artillery-readout">RIFLE READY</span><span id="seed-readout">SEED 000000</span></div>
+      <div class="canvas-frame">
+        <canvas id="world" width="640" height="360" aria-label="A rainy pixel-art trench landscape"></canvas>
+        <div class="scanline" aria-hidden="true"></div>
+      </div>
+    </section>
 
-  <div id="start-overlay" class="overlay">
-    <div class="wow-panel overlay-card">
-      <h1>PIXEL SKY WARS</h1>
-      <div id="battle-brief" class="battle-brief"></div>
-      <div id="version-panel" class="version-panel"></div>
-      <div id="modifier-brief" class="modifier-brief"></div>
-      <section class="hangar" aria-label="Aircraft hangar">
-        <div class="section-heading"><span>HANGAR / AIRCRAFT</span><span>HONOR <strong id="hangar-honor">0</strong></span></div>
-        <div id="aircraft-options" class="aircraft-options"></div>
-      </section>
-      <section class="achievements" aria-label="Pilot achievements">
-        <div class="section-heading">PILOT ACHIEVEMENTS</div>
-        <div id="achievement-list" class="achievement-list"></div>
-      </section>
-      <section class="carrier-upgrades" aria-label="Carrier upgrades">
-        <div class="section-heading"><span>CARRIER UPGRADES</span><span>HONOR <strong id="upgrade-honor">0</strong></span></div>
-        <div id="upgrade-options" class="upgrade-options"></div>
-      </section>
-      <p>
-        <strong>MOUSE CURSOR</strong> - Aim & Vector Flight<br>
-        <strong>W KEY</strong> - Fire Heavy Cannons<br>
-        <strong>SHIFT KEY</strong> - Afterburner Boost<br>
-        <strong>S KEY</strong> - Flaps Airbrake & Tight Turn<br>
-        <strong>CRT BUTTON</strong> - Toggle retro display filter<br>
-        <strong>HANGAR</strong> - Spend Honor to unlock aircraft<br>
-        <strong>CARRIER LANDING</strong> - Slow below 4.5 speed over a carrier deck<br><br>
-        <em><strong>Dogfight Tactical Edition:</strong> Engine flight audio, upright sprite mechanics, AI evasion & stalling physics, heavy aircraft armor, and lead-target dogfighting!</em>
-      </p>
-      <button class="start-btn" onclick="startGame()">ENTER BATTLE</button>
-    </div>
-  </div>
-</div>
-
-<script src="game.js"></script>
+    <footer class="legend">
+      <span><i class="swatch mud"></i> MUD / SOIL</span>
+      <span><i class="swatch timber"></i> TIMBER</span>
+      <span><i class="swatch soldier"></i> ALLIED UNIT</span>
+      <span><i class="swatch enemy"></i> OPPOSING UNIT</span>
+    </footer>
+  </main>
+  <script src="game.js"></script>
 </body>
 </html>

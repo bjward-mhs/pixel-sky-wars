@@ -1,4 +1,4 @@
-# pixel-sky-wars
+# pixel-wars
 
 Pixel Wars is a browser-based pixel dogfight campaign.
 
